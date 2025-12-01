@@ -1,0 +1,22 @@
+{
+    "name": "network_sniffer",
+    "image": "pathinker/network_sniffer:go",
+    "remoteUser": "root",
+    "runArgs": ["-it"],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "formulahendry.code-runner",
+                "golang.Go",
+                "ms-vscode-remote.remote-wsl"
+            ]
+        },
+        "settings": {
+            "code-runner.runInTerminal": true
+        }
+    },
+    "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.gitconfig,target=/home/vscode/.gitconfig,type=bind,consistency=cached",
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh/id_rsa,target=/home/vscode/.ssh/id_rsa,type=bind,consistency=cached"
+  ]
+}
