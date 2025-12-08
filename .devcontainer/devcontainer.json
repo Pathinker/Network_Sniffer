@@ -2,7 +2,12 @@
     "name": "network_sniffer",
     "image": "pathinker/network_sniffer:go",
     "remoteUser": "root",
-    "runArgs": ["-it"],
+    "runArgs": [
+        "-it",
+        "--cap-add=NET_ADMIN",
+        "--cap-add=NET_RAW",
+        "--network=host"
+    ],
     "customizations": {
         "vscode": {
             "extensions": [
