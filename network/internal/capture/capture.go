@@ -1,31 +1,62 @@
 package capture
 
 import (
-    "net"
+	"context"
+	"fmt"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/pcap"
 )
 
 type Capture struct {
-    Iface string
+	handle *pcap.Handle
 }
 
-func NewCapture(iface string) *Capture {
-    return &Capture{Iface: iface}
+func New() (*Capture, error) {
+	iface := "eth0" // change if needed
+
+	handle, err := pcap.OpenLive(iface, 1600, true, pcap.BlockForever)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Capture{
+		handle: handle,
+	}, nil
 }
 
-func (c *Capture) Listen(callback func([]byte)) error {
-    conn, err := net.ListenPacket("ip4:ethernet", c.Iface)
-    if err != nil {
-        return err
-    }
-    defer conn.Close()
+func (c *Capture) Start(ctx context.Context) (<-chan []byte, error) {
+	packetSource := gopacket.NewPacketSource(c.handle, c.handle.LinkType())
+	out := make(chan []byte)
 
-    buf := make([]byte, 65535)
+	go func() {
+		defer close(out)
 
-    for {
-        n, _, err := conn.ReadFrom(buf)
-        if err != nil {
-            return err
-        }
-        callback(buf[:n])
-    }
+		packets := packetSource.Packets()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case packet, ok := <-packets:
+				if !ok {
+					return
+				}
+
+				if packet == nil {
+					continue
+				}
+
+				out <- packet.Data()
+			}
+		}
+	}()
+
+	return out, nil
+}
+
+func (c *Capture) Close() {
+	fmt.Println("Capture closed")
+	c.handle.Close()
 }

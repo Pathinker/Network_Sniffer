@@ -1,44 +1,47 @@
 package decoder
 
 import (
-    "sniffer/internal/protocols"
+	"fmt"
+	"network_sniffer/internal/protocols"
 )
 
 type Decoder struct{}
 
-func NewDecoder() *Decoder {
-    return &Decoder{}
+func New() *Decoder {
+	return &Decoder{}
 }
 
-func (d *Decoder) Decode(raw []byte) (map[string]*protocols.ParsedProtocol, error) {
-    result := make(map[string]*protocols.ParsedProtocol)
+func (d *Decoder) Decode(pkt []byte) (string, error) {
+	eth, rest, ok := protocols.ParseEthernet(pkt)
+	if !ok {
+		return "", fmt.Errorf("invalid ethernet frame")
+	}
 
-    // L2
-    l2, err := protocols.ParseEthernet(raw)
-    if err != nil {
-        return nil, err
-    }
-    result["l2"] = l2
+	// EtherType 0x0800 = IPv4
+	if eth.EtherType != 0x0800 {
+		return "", fmt.Errorf("not IPv4")
+	}
 
-    // L3
-    l3, err := d.decodeL3(l2)
-    if err != nil {
-        return result, nil
-    }
-    result["l3"] = l3
+	ip, rest, ok := protocols.ParseIPv4(rest)
+	if !ok {
+		return "", fmt.Errorf("invalid ipv4 packet")
+	}
 
-    // L4
-    l4, err := d.decodeL4(l3)
-    if err != nil {
-        return result, nil
-    }
-    result["l4"] = l4
+	// Protocol 6 = TCP
+	if ip.Protocol != 6 {
+		return "", fmt.Errorf("not TCP")
+	}
 
-    // L7
-    l7, err := d.decodeL7(l4)
-    if err == nil {
-        result["l7"] = l7
-    }
+	tcp, ok := protocols.ParseTCP(rest)
+	if !ok {
+		return "", fmt.Errorf("invalid TCP segment")
+	}
 
-    return result, nil
+	out := fmt.Sprintf(
+		"TCP %s:%d → %s:%d",
+		ip.SrcIP, tcp.SrcPort,
+		ip.DstIP, tcp.DstPort,
+	)
+
+	return out, nil
 }
