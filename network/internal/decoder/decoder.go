@@ -17,7 +17,7 @@ func (d *Decoder) Decode(pkt []byte) (string, error) {
 		return "", fmt.Errorf("invalid ethernet")
 	}
 
-	// VLAN support
+	// -------- VLAN --------
 	if eth.EtherType == protocols.EtherTypeVLAN {
 		vlan, rest2, ok := protocols.ParseVLAN(rest)
 		if !ok {
@@ -40,13 +40,16 @@ func (d *Decoder) Decode(pkt []byte) (string, error) {
 	// -------- ARP --------
 	if eth.EtherType == protocols.EtherTypeARP {
 		arp, ok := protocols.ParseARP(rest)
-		if ok {
-			return fmt.Sprintf(
-				"ARP %s (%s) → %s (%s)",
-				arp.SenderIP, arp.SenderMAC,
-				arp.TargetIP, arp.TargetMAC,
-			), nil
+		if !ok {
+			return "", fmt.Errorf("bad arp")
 		}
+
+		out := fmt.Sprintf("[ARP] %s (%s) → %s (%s)",
+			arp.SenderIP, arp.SenderMAC,
+			arp.TargetIP, arp.TargetMAC,
+		)
+
+		return d.colorizeProto("ARP", out), nil
 	}
 
 	return "", fmt.Errorf("unknown ethertype")
@@ -78,23 +81,39 @@ func (d *Decoder) decodeL4(proto uint8, payload []byte, srcIP, dstIP string) (st
 		if !ok {
 			return "", fmt.Errorf("bad tcp")
 		}
-		return d.prettyAppDetect("TCP", srcIP, dstIP, tcp.SrcPort, tcp.DstPort, payload[20:])
+
+		return d.prettyAppDetect(
+			"TCP",
+			srcIP, dstIP,
+			tcp.SrcPort, tcp.DstPort,
+			payload[20:],
+		)
 
 	case protocols.ProtoUDP:
 		udp, ok := protocols.ParseUDP(payload)
 		if !ok {
 			return "", fmt.Errorf("bad udp")
 		}
-		return d.prettyAppDetect("UDP", srcIP, dstIP, udp.SrcPort, udp.DstPort, payload[8:])
+
+		return d.prettyAppDetect(
+			"UDP",
+			srcIP, dstIP,
+			udp.SrcPort, udp.DstPort,
+			payload[8:],
+		)
 
 	case protocols.ProtoICMP:
 		icmp, ok := protocols.ParseICMP(payload)
 		if !ok {
 			return "", fmt.Errorf("bad icmp")
 		}
-		return d.colorize(fmt.Sprintf("ICMP %s → %s type=%d code=%d",
-			srcIP, dstIP, icmp.Type, icmp.Code)), nil
+
+		out := fmt.Sprintf("[ICMP] %s → %s type=%d code=%d",
+			srcIP, dstIP, icmp.Type, icmp.Code)
+
+		return d.colorizeProto("ICMP", out), nil
 	}
 
-	return "", fmt.Errorf("unknown L4")
+	out := fmt.Sprintf("[UNKNOWN:%d] %s → %s", proto, srcIP, dstIP)
+	return d.colorizeProto("UNKNOWN", out), nil
 }
