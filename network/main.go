@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -45,6 +46,8 @@ func main() {
 		case '2':
 			showHistory()
 		case '3':
+			exportHistory()
+		case '4':
 			fmt.Println(Yellow + "Saliendo..." + Reset)
 			return
 		default:
@@ -54,19 +57,20 @@ func main() {
 }
 
 func printMenu() {
-	fmt.Println(Cyan + Bold + "\n===============================")
-	fmt.Println("   Simple Go Network Sniffer")
-	fmt.Println("===============================" + Reset)
+	fmt.Println(Cyan + Bold + "\n=====================================")
+	fmt.Println("   Network Sniffer RuesgaG99PROMax")
+	fmt.Println("=====================================" + Reset)
 
 	fmt.Println(Green + "1)" + Reset + " Iniciar captura de paquetes")
 	fmt.Println(Green + "2)" + Reset + " Ver historial de paquetes capturados")
-	fmt.Println(Green + "3)" + Reset + " Salir")
+	fmt.Println(Green + "3)" + Reset + " Exportar historial a TXT")
+	fmt.Println(Green + "4)" + Reset + " Salir")
 
 	fmt.Print(Blue + "\nSelecciona una opción: " + Reset)
 }
 
 func runCapture() {
-	fmt.Println(Green + "\nIniciando captura. Presiona Ctrl+C para detener..." + Reset)
+	fmt.Println(Green + "\nIniciando captura. Presiona cualquier tecla para detener..." + Reset)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -77,6 +81,13 @@ func runCapture() {
 	go func() {
 		<-sig
 		fmt.Println(Yellow + "\nDeteniendo captura..." + Reset)
+		cancel()
+	}()
+
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		_, _ = reader.ReadByte()
+		fmt.Println(Yellow + "\nDeteniendo captura por tecla..." + Reset)
 		cancel()
 	}()
 
@@ -126,12 +137,24 @@ func showHistory() {
 	}
 
 	fmt.Println(Bold + "\nPaquetes almacenados:" + Reset)
-
 	for i, p := range history {
-		fmt.Printf("%s[%d]%s %s - %s\n",
+		packetColor := Cyan
+		if len(p.Summary) >= 3 {
+			switch p.Summary[:3] {
+			case "ARP":
+				packetColor = Green
+			case "[UD":
+				packetColor = Blue
+			case "[TC":
+				packetColor = Yellow
+			case "[IC":
+				packetColor = Red
+			}
+		}
+		fmt.Printf("%s[%d]%s %s - %s%s%s\n",
 			Cyan, i, Reset,
 			p.Timestamp.Format("15:04:05"),
-			p.Summary,
+			packetColor, p.Summary, Reset,
 		)
 	}
 
@@ -149,12 +172,14 @@ func showHistory() {
 		return
 	}
 
+	p := history[index]
+
 	fmt.Println(Bold + "\nDetalles del paquete:" + Reset)
-	fmt.Printf("Hora: %s\n", history[index].Timestamp)
-	fmt.Println("Resumen:", history[index].Summary)
+	fmt.Printf("Hora: %s\n", p.Timestamp.Format("2006-01-02 15:04:05"))
+	fmt.Println("Resumen:", p.Summary)
 
 	fmt.Println(Bold + "\nHexdump:" + Reset)
-	fmt.Println(formatHex(history[index].Raw))
+	fmt.Println(formatHex(p.Raw))
 }
 
 func formatHex(data []byte) string {
@@ -162,9 +187,52 @@ func formatHex(data []byte) string {
 	for i := 0; i < len(data); i += 16 {
 		line := fmt.Sprintf("%04x  ", i)
 		for j := 0; j < 16 && i+j < len(data); j++ {
-			line += fmt.Sprintf("%02x ", data[i+j])
+			line += fmt.Sprintf("%02x", data[i+j])
+			if (j+1)%8 == 0 {
+				line += "  "
+			} else {
+				line += " "
+			}
 		}
+
+		ascii := ""
+		for j := 0; j < 16 && i+j < len(data); j++ {
+			b := data[i+j]
+			if b >= 32 && b <= 126 {
+				ascii += string(b)
+			} else {
+				ascii += "."
+			}
+		}
+		line += " |" + ascii + "|"
 		out += line + "\n"
 	}
 	return out
+}
+
+func exportHistory() {
+	if len(history) == 0 {
+		fmt.Println(Yellow + "\nNo hay paquetes para exportar." + Reset)
+		return
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print(Blue + "Ingresa el nombre del archivo de exportación (ej: paquetes.txt): " + Reset)
+	filename, _ := reader.ReadString('\n')
+	filename = strings.TrimSpace(filename)
+
+	file, err := os.Create(filename)
+	if err != nil {
+		fmt.Println(Red+"Error al crear el archivo:", err, Reset)
+		return
+	}
+	defer file.Close()
+
+	for i, p := range history {
+		file.WriteString(fmt.Sprintf("[%d] %s - %s\n", i, p.Timestamp.Format("2006-01-02 15:04:05"), p.Summary))
+		file.WriteString(formatHex(p.Raw))
+		file.WriteString("\n----------------------------------------\n")
+	}
+
+	fmt.Println(Green + "Historial exportado correctamente a " + filename + Reset)
 }
